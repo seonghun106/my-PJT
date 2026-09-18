@@ -103,59 +103,113 @@ def main() -> None:
         render_signal_stats(df)
 
 
+DEFAULT_ZOOM_DAYS = 126  # 처음 열었을 때 보여줄 기간 (약 6개월치 거래일). 슬라이더/버튼으로 더 넓게 볼 수 있음.
+
+
 def render_price_chart(df: pd.DataFrame) -> None:
+    st.caption(
+        "📱 손가락 두 개로 오므리고 벌리면 확대/축소, 한 손가락으로 드래그하면 이동합니다. "
+        "위쪽 기간 버튼(1개월/3개월/6개월/1년/전체)이나 맨 아래 슬라이더로도 조절할 수 있어요."
+    )
+
     fig = make_subplots(
-        rows=3,
+        rows=4,
         cols=1,
         shared_xaxes=True,
-        row_heights=[0.55, 0.2, 0.25],
-        vertical_spacing=0.04,
-        subplot_titles=("가격 · 이동평균 · 볼린저밴드", "거래량", "RSI(14)"),
+        row_heights=[0.42, 0.14, 0.19, 0.25],
+        vertical_spacing=0.03,
+        subplot_titles=("가격 · 이동평균 · 볼린저밴드", "거래량", "RSI(14)", "MACD"),
     )
 
     fig.add_trace(
         go.Candlestick(
-            x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"], name="가격"
+            x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"],
+            name="가격", increasing_line_color="#d62728", decreasing_line_color="#1f77b4",
         ),
         row=1,
         col=1,
     )
 
+    # MA5/20/60은 기본으로 보여주고, 120/200은 범례를 눌러야 나타나게 해서 처음 화면을 덜 복잡하게 만듭니다.
+    default_visible_ma = {5, 20, 60}
     for w in config.MA_WINDOWS:
-        fig.add_trace(go.Scatter(x=df.index, y=df[f"MA{w}"], name=f"MA{w}", line=dict(width=1)), row=1, col=1)
+        fig.add_trace(
+            go.Scatter(
+                x=df.index, y=df[f"MA{w}"], name=f"MA{w}", line=dict(width=1),
+                visible=True if w in default_visible_ma else "legendonly",
+            ),
+            row=1,
+            col=1,
+        )
 
     fig.add_trace(
-        go.Scatter(x=df.index, y=df["BB_Upper"], name="볼린저밴드 상단", line=dict(width=1, dash="dot")),
+        go.Scatter(x=df.index, y=df["BB_Upper"], name="볼린저밴드 상단", line=dict(width=1, dash="dot"), visible="legendonly"),
         row=1,
         col=1,
     )
     fig.add_trace(
-        go.Scatter(x=df.index, y=df["BB_Lower"], name="볼린저밴드 하단", line=dict(width=1, dash="dot")),
+        go.Scatter(x=df.index, y=df["BB_Lower"], name="볼린저밴드 하단", line=dict(width=1, dash="dot"), visible="legendonly"),
         row=1,
         col=1,
     )
 
-    fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="거래량"), row=2, col=1)
+    volume_colors = ["#d62728" if c >= o else "#1f77b4" for o, c in zip(df["Open"], df["Close"])]
+    fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="거래량", marker_color=volume_colors), row=2, col=1)
     fig.add_trace(
-        go.Scatter(x=df.index, y=df[f"Volume_MA{config.VOLUME_MA_WINDOW}"], name="거래량 20일 평균"),
+        go.Scatter(x=df.index, y=df[f"Volume_MA{config.VOLUME_MA_WINDOW}"], name="거래량 20일 평균", line=dict(width=1)),
         row=2,
         col=1,
     )
 
-    fig.add_trace(go.Scatter(x=df.index, y=df[f"RSI{config.RSI_PERIOD}"], name="RSI14"), row=3, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df[f"RSI{config.RSI_PERIOD}"], name="RSI14", line=dict(width=1)), row=3, col=1)
     fig.add_hline(y=70, line_dash="dot", line_color="gray", row=3, col=1)
     fig.add_hline(y=30, line_dash="dot", line_color="gray", row=3, col=1)
 
-    fig.update_layout(height=900, xaxis_rangeslider_visible=False, legend=dict(orientation="h", y=1.02))
-    st.plotly_chart(fig, use_container_width=True)
+    fig.add_trace(go.Scatter(x=df.index, y=df["MACD"], name="MACD", line=dict(width=1)), row=4, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df["MACD_Signal"], name="MACD Signal", line=dict(width=1)), row=4, col=1)
+    macd_colors = ["#d62728" if v >= 0 else "#1f77b4" for v in df["MACD_Hist"].fillna(0)]
+    fig.add_trace(go.Bar(x=df.index, y=df["MACD_Hist"], name="MACD Histogram", marker_color=macd_colors), row=4, col=1)
 
-    st.markdown("**MACD**")
-    macd_fig = go.Figure()
-    macd_fig.add_trace(go.Scatter(x=df.index, y=df["MACD"], name="MACD"))
-    macd_fig.add_trace(go.Scatter(x=df.index, y=df["MACD_Signal"], name="Signal"))
-    macd_fig.add_trace(go.Bar(x=df.index, y=df["MACD_Hist"], name="Histogram"))
-    macd_fig.update_layout(height=300, legend=dict(orientation="h", y=1.1))
-    st.plotly_chart(macd_fig, use_container_width=True)
+    default_start = df.index[-DEFAULT_ZOOM_DAYS] if len(df) > DEFAULT_ZOOM_DAYS else df.index[0]
+
+    default_range = [default_start, df.index[-1]]
+    # matches(공유 x축)에 의존하지 않고, 4개 행 모두에 같은 초기 범위를 명시적으로 지정합니다.
+    for r in (1, 2, 3, 4):
+        fig.update_xaxes(range=default_range, row=r, col=1)
+
+    fig.update_xaxes(
+        row=1,
+        col=1,
+        rangeslider=dict(visible=False),  # 캔들스틱 기본 슬라이더는 끄고, 아래(row4)에 전용 슬라이더만 둡니다.
+        rangeselector=dict(
+            buttons=[
+                dict(count=1, label="1개월", step="month", stepmode="backward"),
+                dict(count=3, label="3개월", step="month", stepmode="backward"),
+                dict(count=6, label="6개월", step="month", stepmode="backward"),
+                dict(count=1, label="1년", step="year", stepmode="backward"),
+                dict(step="all", label="전체"),
+            ],
+            y=1.32,
+            x=0,
+            xanchor="left",
+        ),
+    )
+    # 실제 확대/축소 슬라이더는 맨 아래(MACD) x축에 붙여서 전체 화면 높이를 아끼면서도 조절 가능하게 합니다.
+    fig.update_xaxes(rangeslider=dict(visible=True, thickness=0.08), row=4, col=1)
+
+    fig.update_layout(
+        height=1000,
+        legend=dict(orientation="h", y=1.16, yanchor="bottom", x=0, xanchor="left"),
+        margin=dict(t=160, b=10, l=10, r=10),
+        hovermode="x unified",
+        dragmode="pan",
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={"scrollZoom": True, "displaylogo": False},
+    )
 
 
 def render_current_signals(df: pd.DataFrame) -> None:
