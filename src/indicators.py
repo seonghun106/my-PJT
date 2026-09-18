@@ -96,7 +96,8 @@ def add_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df = add_rsi(df)
     df = add_macd(df)
     df = add_bollinger_bands(df)
-    df = add_volume_ma(df)
+    df = add_volume_ma(df, window=config.VOLUME_MA_WINDOW)
+    df = add_volume_ma(df, window=config.VOLUME_MA_LONG_WINDOW)
     df = add_52w_high_ratio(df)
     df = add_momentum(df)
     return df

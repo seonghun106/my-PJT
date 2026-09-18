@@ -41,8 +41,9 @@ MACD_SIGNAL = 9
 BB_WINDOW = 20
 BB_NUM_STD = 2
 
-# 거래량 이동평균
+# 거래량 이동평균 (단기/장기 - 장기는 "평소 거래량"을 판단할 때 사용)
 VOLUME_MA_WINDOW = 20
+VOLUME_MA_LONG_WINDOW = 60
 
 # 52주 신고가 (거래일 기준 약 1년 = 252일)
 HIGH_52W_WINDOW = 252
@@ -81,3 +82,34 @@ ROUND_TRIP_COST_PCT = 0.003  # 0.3%
 # 시장 추세 판단에 쓰는 지수 티커 (코스피/코스닥 지수)와 추세 판단 이동평균 기간
 MARKET_INDEX_TICKERS = {"KOSPI": "KS11", "KOSDAQ": "KQ11"}
 MARKET_TREND_MA_WINDOW = 200
+
+# ── 종목 검색식(스크리너) 파라미터 ──────────────────────────────────────────
+# "지금 이 조건을 만족하는 종목"을 시장 전체에서 찾는 검색식들의 설정값입니다.
+
+# 월봉 이동평균 돌파 검색식
+MONTHLY_MA_WINDOW = 10                    # 월봉 몇 개월선을 볼지
+MONTHLY_BREAKOUT_LOOKBACK_MONTHS = 12      # "과거 몇 개월 동안 못 넘었는지" 확인할 기간
+MONTHLY_BREAKOUT_VOLUME_MULTIPLIER = 2.5   # 돌파월 거래량이 이전 평균의 몇 배 이상이어야 하는지
+
+# 정배열 / 이격도
+DISPARITY_OVERBOUGHT = 115.0   # 20일 이격도(종가/20일선*100)가 이 값 이상이면 "과열"
+DISPARITY_OVERSOLD = 88.0      # 이 값 이하이면 "침체"
+
+# 눌림목 매수: 상승추세(종가>60일선, 20일선>60일선) 중 20일선을 딛고 반등
+
+# 박스권 돌파
+BOX_BREAKOUT_WINDOW = 20            # 박스권으로 볼 과거 거래일 수 (오늘 제외)
+BOX_RANGE_PCT = 0.10                # 이 비율 이하로 좁게 움직였으면 "박스권"으로 인정
+BOX_BREAKOUT_VOLUME_MULTIPLIER = 1.5  # 돌파 당일 거래량이 20일 평균의 몇 배 이상이어야 하는지
+
+# 거래량 바닥 다지기 후 급증 (매집 후 발화)
+VOLUME_DRYUP_RATIO = 0.6          # 20일 평균거래량이 60일 평균거래량의 이 비율 이하면 "거래 한산"
+VOLUME_SPIKE_MULTIPLIER_SCREEN = 3.0  # 오늘 거래량이 20일 평균의 몇 배 이상이면 "급증"
+
+# 한 번에 스캔할 기본/최대 종목 수 (너무 많으면 웹 화면에서 느려집니다)
+SCREENER_DEFAULT_LIMIT = 100
+SCREENER_MAX_LIMIT = 300
+
+# 투자자별(기관/외국인) 순매수 거래대금 조회 시 기본 조회 기간(일)과 노출 종목 수
+INVESTOR_FLOW_DEFAULT_DAYS = 20
+INVESTOR_FLOW_TOP_N = 30
