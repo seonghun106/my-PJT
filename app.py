@@ -28,8 +28,8 @@ def load_stock_list() -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner="가격 데이터를 불러오고 지표를 계산하는 중... (처음 조회하는 종목은 시간이 걸릴 수 있어요)")
-def load_stock_data(ticker: str, years: int) -> pd.DataFrame:
-    return pipeline.build_stock_dataframe(ticker, years=years)
+def load_stock_data(ticker: str, stock_market: str, years: int) -> pd.DataFrame:
+    return pipeline.build_stock_dataframe(ticker, market=stock_market, years=years)
 
 
 def format_pct(x) -> str:
@@ -45,8 +45,8 @@ def main() -> None:
     with st.sidebar:
         st.header("🔍 종목 검색")
 
-        market = st.selectbox("시장", ["전체", "KOSPI", "KOSDAQ"])
-        filtered = stock_list if market == "전체" else stock_list[stock_list["Market"] == market]
+        market_filter = st.selectbox("시장", ["전체", "KOSPI", "KOSDAQ"])
+        filtered = stock_list if market_filter == "전체" else stock_list[stock_list["Market"] == market_filter]
 
         query = st.text_input("종목명 또는 코드로 검색", placeholder="예: 삼성전자 또는 005930")
         if query:
@@ -64,13 +64,14 @@ def main() -> None:
         selected = st.selectbox(f"종목 선택 ({len(filtered)}개 표시)", options)
         ticker = selected.split("(")[-1].rstrip(")")
         name = selected.split(" (")[0]
+        stock_market = filtered.loc[filtered["Code"] == ticker, "Market"].iloc[0]
 
         years = st.slider("불러올 데이터 기간(년)", min_value=1, max_value=5, value=config.YEARS_OF_DATA)
 
         st.markdown("---")
         st.caption("데이터 출처: FinanceDataReader (KRX/네이버 금융 등)")
 
-    df = load_stock_data(ticker, years)
+    df = load_stock_data(ticker, stock_market, years)
     if df.empty:
         st.error(
             "이 종목은 데이터가 충분하지 않아 지표를 계산할 수 없습니다. "
@@ -82,12 +83,13 @@ def main() -> None:
     prev_close = df["Close"].iloc[-2] if len(df) >= 2 else latest["Close"]
 
     st.subheader(f"{name} ({ticker})")
-    metric_cols = st.columns(5)
+    metric_cols = st.columns(6)
     metric_cols[0].metric("현재가", f"{latest['Close']:,.0f}원", f"{(latest['Close'] / prev_close - 1):.2%}")
     metric_cols[1].metric("RSI(14)", f"{latest[f'RSI{config.RSI_PERIOD}']:.1f}")
     metric_cols[2].metric("52주 고점 대비", format_pct(latest["Pct_Of_52W_High"]))
     metric_cols[3].metric("20일 모멘텀", format_pct(latest["Momentum20"]))
     metric_cols[4].metric("60일 모멘텀", format_pct(latest["Momentum60"]))
+    metric_cols[5].metric(f"{stock_market} 지수 추세", "상승장" if bool(latest["market_uptrend"]) else "하락장")
 
     tab_chart, tab_signal, tab_stats = st.tabs(["📊 가격 차트 & 지표", "🚦 현재 시그널", "📈 과거 시그널 통계"])
 
@@ -174,29 +176,66 @@ def render_current_signals(df: pd.DataFrame) -> None:
     st.dataframe(recent, use_container_width=True)
 
 
+def _translate_signal_label(signal_text: str) -> str:
+    return " & ".join(signals.SIGNAL_LABELS.get(part, part) for part in signal_text.split(" & "))
+
+
 def render_signal_stats(df: pd.DataFrame) -> None:
     signal_cols = signals.get_signal_columns()
 
+    with st.expander("📖 이 통계, 어떻게 읽어야 하나요? (꼭 한 번 읽어보세요)", expanded=False):
+        st.markdown(
+            f"""
+- **발생횟수(count)**: 과거에 이 시그널(또는 조합)이 몇 번 발생했는지. **{config.MIN_SAMPLE_SIZE}번 미만이면
+  "표본부족"으로 표시됩니다** — 몇 번 안 되는 사례로는 통계를 신뢰하기 어렵습니다.
+- **baseline_mean_return**: 시그널과 상관없이 "그냥 아무 날"에 샀다면 평균적으로 어땠는지. 시그널의 평균 수익률과
+  비교하는 기준선입니다.
+- **excess_return**: (시그널 평균 수익률) − (baseline 평균 수익률). **양수여야 "이 시그널이 그냥 아무 날보다
+  낫다"**는 뜻입니다.
+- **pvalue**: 시그널 수익률이 baseline과 통계적으로 정말 다른지 검정한 값입니다. **0.05 미만이면 유의미**,
+  0.05~0.1이면 약한 유의성, 0.1 이상이면 우연일 가능성이 높습니다.
+- **confidence**: 표본수 + p-value를 종합한 한 줄 요약입니다. **"유의미"가 아니면 참고만 하고 맹신하지 마세요.**
+- **net_mean_return / net_win_rate**: 거래비용(수수료+세금, 왕복 약 {config.ROUND_TRIP_COST_PCT:.2%} 가정)을
+  뺀 뒤의 실질 수익률/승률입니다.
+            """
+        )
+
     st.markdown("#### 이 종목의 과거 시그널 통계")
-    st.caption("이 종목의 지난 데이터에서 각 시그널(또는 조합)이 발생한 뒤 5/20/60거래일 후 수익률입니다.")
+    st.caption("이 종목의 지난 데이터에서 각 시그널(또는 최대 3개 조합)이 발생한 뒤 5/20/60거래일 후 수익률입니다.")
 
     stock_stats = backtest.compute_signal_stats(df, signal_cols)
     if stock_stats.empty:
         st.info("이 종목에서는 아직 발생한 시그널이 없습니다.")
     else:
         display_stats = stock_stats.copy()
-        display_stats["signal"] = display_stats["signal"].map(
-            lambda s: " & ".join(signals.SIGNAL_LABELS.get(part, part) for part in s.split(" & "))
-        )
+        display_stats["signal"] = display_stats["signal"].map(_translate_signal_label)
         display_stats = display_stats.rename(columns={"signal": "시그널", "count": "발생횟수"})
         st.dataframe(style_stats_table(display_stats), use_container_width=True)
+
+    st.markdown("---")
+    st.markdown("#### 시장 추세(상승장/하락장)별 통계")
+    st.caption("코스피/코스닥 지수가 자체 200일선 위(상승장)/아래(하락장)에 있을 때로 나눠서 봅니다.")
+    regime_stats = backtest.compute_signal_stats_by_regime(df, signal_cols)
+    if regime_stats.empty:
+        st.info("시장 추세별로 나눌 만큼 시그널 발생 데이터가 충분하지 않습니다.")
+    else:
+        display_regime = regime_stats.copy()
+        display_regime["signal"] = display_regime["signal"].map(_translate_signal_label)
+        display_regime = display_regime.rename(
+            columns={"signal": "시그널", "market_regime": "시장상황", "count": "발생횟수"}
+        )
+        st.dataframe(style_stats_table(display_regime), use_container_width=True)
 
     st.markdown("---")
     st.markdown("#### 전체 시장 기준 통계 (참고용)")
     market_stats_path = config.PROCESSED_DIR / "signal_stats.csv"
     if market_stats_path.exists():
         market_stats = pd.read_csv(market_stats_path)
-        st.dataframe(style_stats_table(market_stats.rename(columns={"signal": "시그널", "count": "발생횟수"})), use_container_width=True)
+        market_stats["signal"] = market_stats["signal"].map(_translate_signal_label)
+        st.dataframe(
+            style_stats_table(market_stats.rename(columns={"signal": "시그널", "count": "발생횟수"})),
+            use_container_width=True,
+        )
     else:
         st.info(
             "아직 전체 시장 통계 파일이 없습니다. 터미널(명령 프롬프트)에서 아래 명령어를 실행하면 "
@@ -207,8 +246,26 @@ def render_signal_stats(df: pd.DataFrame) -> None:
 
 def style_stats_table(stats: pd.DataFrame):
     pct_keywords = ["return", "rate", "prob", "drawdown"]
-    pct_cols = [c for c in stats.columns if any(k in c for k in pct_keywords)]
-    return stats.style.format({c: "{:.2%}" for c in pct_cols}, na_rep="-")
+    pct_cols = [c for c in stats.columns if any(k in c for k in pct_keywords) and "pvalue" not in c]
+    pvalue_cols = [c for c in stats.columns if "pvalue" in c]
+
+    fmt = {c: "{:.2%}" for c in pct_cols}
+    fmt.update({c: "{:.3f}" for c in pvalue_cols})
+
+    styled = stats.style.format(fmt, na_rep="-")
+
+    confidence_cols = [c for c in stats.columns if c.startswith("confidence_")]
+    if confidence_cols:
+        styled = styled.map(_highlight_confidence, subset=confidence_cols)
+    return styled
+
+
+def _highlight_confidence(value) -> str:
+    if isinstance(value, str) and value.startswith("유의미"):
+        return "color: #1a7f37; font-weight: 600;"
+    if isinstance(value, str) and value in ("표본부족", "유의성없음"):
+        return "color: #9a9a9a;"
+    return ""
 
 
 if __name__ == "__main__":

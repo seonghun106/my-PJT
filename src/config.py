@@ -63,5 +63,21 @@ SIGNAL_GOLDEN_CROSS_SLOW = 60
 # 통계에서 "크게 상승"으로 볼 기준 수익률
 BIG_GAIN_THRESHOLD = 0.10
 
-# 시그널 조합 통계를 만들 때 몇 개까지 묶어서 볼지 (2 = 두 개씩 조합)
-MAX_SIGNAL_COMBO_SIZE = 2
+# 시그널 조합 통계를 만들 때 몇 개까지 묶어서 볼지 (3 = 최대 세 개까지 동시 충족 조합도 확인)
+MAX_SIGNAL_COMBO_SIZE = 3
+
+# 이보다 발생 횟수가 적으면 "표본 부족"으로 표시합니다 (통계를 신뢰하기 어려운 수준).
+MIN_SAMPLE_SIZE = 30
+
+# 시그널 발생 후 수익률이 "그냥 아무 날"(baseline)과 통계적으로 다른지 검정할 때
+# 사용하는 유의수준 기준값들 (p-value 해석용)
+PVALUE_SIGNIFICANT = 0.05
+PVALUE_WEAK_SIGNIFICANT = 0.10
+
+# 왕복 거래비용 대략치 (매수+매도 수수료 + 증권거래세 포함, 1회 매매 기준 추정치).
+# 실제 비용은 증권사/세율 변경에 따라 다르므로 참고용 추정값입니다.
+ROUND_TRIP_COST_PCT = 0.003  # 0.3%
+
+# 시장 추세 판단에 쓰는 지수 티커 (코스피/코스닥 지수)와 추세 판단 이동평균 기간
+MARKET_INDEX_TICKERS = {"KOSPI": "KS11", "KOSDAQ": "KQ11"}
+MARKET_TREND_MA_WINDOW = 200

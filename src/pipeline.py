@@ -12,15 +12,19 @@ from __future__ import annotations
 
 import pandas as pd
 
-from . import backtest, config, data_loader, indicators, signals
+from . import backtest, config, data_loader, indicators, market_regime, signals
 
 
 def build_stock_dataframe(
     ticker: str,
+    market: str = "KOSPI",
     years: int = config.YEARS_OF_DATA,
     force_refresh: bool = False,
 ) -> pd.DataFrame:
-    """종목 코드 하나에 대해 지표 + 시그널 + 미래 수익률까지 계산된 DataFrame을 반환합니다.
+    """종목 코드 하나에 대해 지표 + 시그널 + 미래 수익률 + 시장 추세까지 계산된 DataFrame을 반환합니다.
+
+    market은 'KOSPI' 또는 'KOSDAQ' — 이 종목이 속한 시장의 지수 추세(상승장/하락장)를
+    같이 붙여서, 시장 상황별로 시그널 성과를 나눠볼 수 있게 합니다.
 
     데이터가 없거나 너무 짧으면(지표 워밍업 불가) 빈 DataFrame을 반환합니다.
     """
@@ -31,4 +35,5 @@ def build_stock_dataframe(
     df = indicators.add_all_indicators(df)
     df = signals.add_all_signals(df)
     df = backtest.add_forward_returns(df)
+    df = market_regime.attach_market_trend(df, market=market, years=years)
     return df

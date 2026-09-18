@@ -59,9 +59,11 @@ def main() -> None:
     all_frames = []
 
     for row in tqdm(list(stocks.itertuples()), desc="종목별 데이터 처리"):
-        ticker, name = row.Code, row.Name
+        ticker, name, stock_market = row.Code, row.Name, row.Market
         try:
-            df = pipeline.build_stock_dataframe(ticker, years=args.years, force_refresh=args.refresh)
+            df = pipeline.build_stock_dataframe(
+                ticker, market=stock_market, years=args.years, force_refresh=args.refresh
+            )
         except Exception as exc:  # 개별 종목 실패는 건너뛰고 계속 진행합니다.
             print(f"[경고] {ticker} {name} 처리 실패: {exc}")
             continue
