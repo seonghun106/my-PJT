@@ -1,0 +1,14 @@
+{
+  "name": "my-stock-chart",
+  "version": "1.0.0",
+  "private": true,
+  "description": "개인용 주식 차트·이동평균 교차 백테스트 웹앱 (교육용, 주문 기능 없음)",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  }
+}
